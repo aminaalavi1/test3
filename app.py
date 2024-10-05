@@ -88,26 +88,38 @@ if st.button("Send"):
 
         if last_agent == "onboarding_agent":
             # Interact with onboarding_agent
-            onboarding_agent.receive({"role": "user", "content": user_input})
+            onboarding_agent.receive(
+                sender="user",
+                message={"role": "user", "content": user_input}
+            )
 
             # Get the agent's response
             response = onboarding_agent.message_history.get_new_messages()[-1]
-            st.session_state["messages"].append({"sender": "Healthbite Assistant", "content": response["content"]})
+            st.session_state["messages"].append({
+                "sender": "Healthbite Assistant",
+                "content": response["content"]
+            })
 
             # Check for termination
             if onboarding_agent.is_terminated():
                 st.session_state["last_agent"] = "engagement_agent"
-                st.session_state["customer_info"] = {}  # You can extract customer info here if needed
+                st.success("Onboarding complete! Proceeding to meal plan generation.")
             else:
                 st.session_state["last_agent"] = "onboarding_agent"
 
         elif last_agent == "engagement_agent":
             # Interact with engagement_agent
-            engagement_agent.receive({"role": "user", "content": user_input})
+            engagement_agent.receive(
+                sender="user",
+                message={"role": "user", "content": user_input}
+            )
 
             # Get the agent's response
             response = engagement_agent.message_history.get_new_messages()[-1]
-            st.session_state["messages"].append({"sender": "Healthbite Assistant", "content": response["content"]})
+            st.session_state["messages"].append({
+                "sender": "Healthbite Assistant",
+                "content": response["content"]
+            })
 
             # Check for termination
             if engagement_agent.is_terminated():
@@ -148,21 +160,4 @@ if st.session_state.get("last_agent") == "finished":
                     sns.barplot(data=df, x="Meal", y="Calorie Intake", ax=ax)
                     st.pyplot(fig)
                 except json.JSONDecodeError:
-                    st.error("Failed to parse JSON data from the assistant's response.")
-            else:
-                st.warning("No nutritional data found in the assistant's response.")
-        else:
-            st.error("No assistant messages found from the engagement agent.")
-    else:
-        st.error("No messages found from the engagement agent.")
-
-    # Reset conversation
-    if st.button("Start New Conversation"):
-        st.session_state["messages"] = []
-        onboarding_agent.reset()
-        engagement_agent.reset()
-        st.session_state["last_agent"] = "onboarding_agent"
-
-# Footer
-st.write("---")
-st.write("Developed with ❤️ using OpenAI, Autogen, and Streamlit")
+                    st.error("Failed to parse JSON data from the assistant's r
