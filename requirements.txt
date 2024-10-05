@@ -4,4 +4,4 @@ pandas
 matplotlib
 seaborn
 pyautogen  # Use the correct package name or installation method
-
+git+https://github.com/microsoft/autogen.git
