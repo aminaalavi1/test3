@@ -3,11 +3,19 @@
 import streamlit as st
 from autogen import ConversableAgent, initiate_chats
 import os
+import openai
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from io import StringIO
+import base64
+import re
 
 st.title("Healthbite Meal Plan Generator")
 
-# Set up the OpenAI API key
+# Set up the OpenAI API key from Streamlit secrets
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
 # Configuration for the language model
 config_list = [{"model": "gpt-3.5-turbo", "api_key": OPENAI_API_KEY}]
@@ -36,7 +44,7 @@ engagement_agent = ConversableAgent(
         "- **Serving sizes and calorie counts** for each meal.\n"
         "- **Nutritional information**, specifying the servings of greens, fruits, vegetables, fiber, proteins, etc., in each meal.\n\n"
         "**Additional Tasks:**\n\n"
-        "- **Generate a data frame** that has five columns: Date, Meal (like breakfast/lunch/dinner), Fat%, calorie intake, and sugar.\n"
+        "- **Generate a data frame** that has five columns: Date, Meal (like breakfast/lunch/dinner), Fat%, Calorie Intake, and Sugar.\n"
         "- **Create a plot** (e.g., a bar chart) visualizing this nutritional information.\n"
         "- **Include the data frame and the plot** in your response.\n\n"
         "**Customization Guidelines:**\n\n"
@@ -67,8 +75,12 @@ customer_proxy_agent = ConversableAgent(
 # Initialize session state
 if "customer_info" not in st.session_state:
     st.session_state["customer_info"] = {}
-if "conversation_history" not in st.session_state:
-    st.session_state["conversation_history"] = []
+if "meal_plan" not in st.session_state:
+    st.session_state["meal_plan"] = ""
+if "data_frame" not in st.session_state:
+    st.session_state["data_frame"] = pd.DataFrame()
+if "plot_image" not in st.session_state:
+    st.session_state["plot_image"] = None
 
 # Collect customer information
 st.header("Patient Onboarding")
@@ -88,16 +100,19 @@ if not st.session_state["customer_info"].get("completed"):
         submit_button = st.form_submit_button(label="Submit")
 
     if submit_button:
-        st.session_state["customer_info"] = {
-            "name": name.strip(),
-            "zip_code": zip_code.strip(),
-            "disease": disease,
-            "cuisine": cuisine,
-            "avoid_ingredients": [ingredient.strip() for ingredient in avoid_ingredients.split(",") if ingredient.strip()],
-            "completed": True,
-        }
-        st.success("Thank you! Your information has been recorded.")
-        st.experimental_rerun()
+        if not name or not zip_code:
+            st.error("Please provide both your name and zip code.")
+        else:
+            st.session_state["customer_info"] = {
+                "name": name.strip(),
+                "zip_code": zip_code.strip(),
+                "disease": disease,
+                "cuisine": cuisine,
+                "avoid_ingredients": [ingredient.strip() for ingredient in avoid_ingredients.split(",") if ingredient.strip()],
+                "completed": True,
+            }
+            st.success("Thank you! Your information has been recorded.")
+            st.experimental_rerun()
 else:
     st.write(f"Welcome, **{st.session_state['customer_info']['name']}**!")
 
@@ -107,27 +122,7 @@ if st.session_state["customer_info"].get("completed"):
         st.header("Generating Your Personalized Meal Plan...")
         with st.spinner("Please wait while we generate your meal plan..."):
 
-            # Prepare the chat sequence
-            chats = [
-                {
-                    "sender": onboarding_agent,
-                    "recipient": customer_proxy_agent,
-                    "message": (
-                        "Hello! I'm here to help you get started with Healthbite."
-                    ),
-                    "max_turns": 2,
-                    "clear_history": True,
-                },
-                {
-                    "sender": customer_proxy_agent,
-                    "recipient": engagement_agent,
-                    "message": "Let's get your meal plan ready!",
-                    "max_turns": 1,
-                    "summary_method": "reflection_with_llm",
-                },
-            ]
-
-            # Inject customer info into the conversation
+            # Prepare customer message
             customer_info = st.session_state["customer_info"]
             customer_message = (
                 f"My name is {customer_info['name']}. "
@@ -136,23 +131,49 @@ if st.session_state["customer_info"].get("completed"):
             )
 
             # Simulate the conversation
-            customer_proxy_agent.human_input_mode = "NEVER"
-            customer_proxy_agent.receive_message({"content": customer_message, "sender": "user"})
+            chats = [
+                {
+                    "sender": onboarding_agent,
+                    "recipient": customer_proxy_agent,
+                    "message": "Hello! I'm here to help you get started with Healthbite.",
+                    "max_turns": 2,
+                    "clear_history": True,
+                },
+                {
+                    "sender": customer_proxy_agent,
+                    "recipient": engagement_agent,
+                    "message": customer_message,
+                    "max_turns": 1,
+                    "summary_method": "reflection_with_llm",
+                },
+            ]
+
             chat_results = initiate_chats(chats)
 
             # Extract the meal plan from the engagement agent's response
-            meal_plan_response = chat_results.get("customer_proxy_agent_engagement_agent", {}).get("messages", [])
+            conversation_key = f"{customer_proxy_agent.name}_{engagement_agent.name}"
+            meal_plan_response = chat_results.get(conversation_key, {}).get("messages", [])
+
             if meal_plan_response:
                 # Get the last message from the engagement agent
                 meal_plan_content = meal_plan_response[-1]["content"]
                 st.session_state["meal_plan"] = meal_plan_content
+
+                # Parse data frame and plot from the response
+                # Extract CSV data
+                csv_match = re.search(r"<csv>(.*?)</csv>", meal_plan_content, re.DOTALL)
+                if csv_match:
+                    csv_data = csv_match.group(1).strip()
+                    # Convert CSV data to DataFrame
+                    df = pd.read_csv(StringIO(csv_data))
+                    st.session_state["data_frame"] = df
+
+                # Extract Base64 image
+                img_match = re.search(r"<img>(.*?)</img>", meal_plan_content, re.DOTALL)
+                if img_match:
+                    img_data = img_match.group(1).strip()
+                    # Decode the base64 image
+                    image_bytes = base64.b64decode(img_data)
+                    st.session_state["plot_image"] = image_bytes
             else:
-                st.session_state["meal_plan"] = "No meal plan generated."
-
-        st.success("Your meal plan is ready!")
-        st.experimental_rerun()
-
-# Display the meal plan
-if st.session_state.get("meal_plan"):
-    st.header("Your Personalized Meal Plan")
-    st.markdown(st.session_state["meal_plan"])
+                st.sessi
