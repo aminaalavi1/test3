@@ -1,7 +1,7 @@
 # app.py
 
 import streamlit as st
-from autogen import ConversableAgent, initiate_chat
+from autogen import ConversableAgent
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -62,6 +62,8 @@ engagement_agent = ConversableAgent(
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
+if "last_agent" not in st.session_state:
+    st.session_state["last_agent"] = "onboarding_agent"
 
 # Chat Interface
 st.header("Chat with Healthbite Assistant")
@@ -115,36 +117,40 @@ if st.button("Send"):
 # When conversation is finished
 if st.session_state.get("last_agent") == "finished":
     # Extract meal plan from engagement_agent
-    meal_plan_content = engagement_agent.message_history.get_all_messages()[-1]["content"]
-    st.header("Your Personalized Meal Plan")
-    st.markdown(meal_plan_content)
+    messages = engagement_agent.message_history.get_all_messages()
+    if messages:
+        meal_plan_content = messages[-1]["content"]
+        st.header("Your Personalized Meal Plan")
+        st.markdown(meal_plan_content)
 
-    # Parse JSON data
-    json_match = re.search(r"<json>(.*?)</json>", meal_plan_content, re.DOTALL)
-    if json_match:
-        json_data = json_match.group(1).strip()
-        try:
-            data_list = json.loads(json_data)
-            df = pd.DataFrame(data_list)
-            st.subheader("Nutritional Information Data Frame")
-            st.dataframe(df)
+        # Parse JSON data
+        json_match = re.search(r"<json>(.*?)</json>", meal_plan_content, re.DOTALL)
+        if json_match:
+            json_data = json_match.group(1).strip()
+            try:
+                data_list = json.loads(json_data)
+                df = pd.DataFrame(data_list)
+                st.subheader("Nutritional Information Data Frame")
+                st.dataframe(df)
 
-            # Generate plot
-            st.subheader("Nutritional Information Plot")
-            fig, ax = plt.subplots()
-            sns.barplot(data=df, x="Meal", y="Calorie Intake", ax=ax)
-            st.pyplot(fig)
-        except json.JSONDecodeError:
-            st.error("Failed to parse JSON data from the assistant's response.")
+                # Generate plot
+                st.subheader("Nutritional Information Plot")
+                fig, ax = plt.subplots()
+                sns.barplot(data=df, x="Meal", y="Calorie Intake", ax=ax)
+                st.pyplot(fig)
+            except json.JSONDecodeError:
+                st.error("Failed to parse JSON data from the assistant's response.")
+        else:
+            st.warning("No nutritional data found in the assistant's response.")
+
+        # Reset conversation
+        if st.button("Start New Conversation"):
+            st.session_state["messages"] = []
+            onboarding_agent.reset()
+            engagement_agent.reset()
+            st.session_state["last_agent"] = "onboarding_agent"
     else:
-        st.warning("No nutritional data found in the assistant's response.")
-
-    # Reset conversation
-    if st.button("Start New Conversation"):
-        st.session_state["messages"] = []
-        onboarding_agent.reset()
-        engagement_agent.reset()
-        st.session_state["last_agent"] = "onboarding_agent"
+        st.error("No messages found from the engagement agent.")
 
 # Footer
 st.write("---")
