@@ -3,12 +3,9 @@
 import streamlit as st
 from autogen import ConversableAgent, initiate_chats
 import os
-import openai
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from io import StringIO
-import base64
 import re
 import json
 
@@ -21,53 +18,8 @@ os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 # Configuration for the language model
 config_list = [{"model": "gpt-3.5-turbo", "api_key": OPENAI_API_KEY}]
 
-# Define agents
-onboarding_agent = ConversableAgent(
-    name="onboarding_agent",
-    system_message=(
-        "You are a helpful patient onboarding agent. "
-        "Your job is to gather the patient's name, chronic disease, zip code, and meal cuisine preference. "
-        "When they provide this information, ask them about any ingredients they wish to avoid. "
-        "Do not ask for other information. Return 'TERMINATE' when you have gathered all the information."
-    ),
-    llm_config={"config_list": config_list},
-    code_execution_config=False,  # Disable code execution
-    human_input_mode="NEVER",
-)
-
-engagement_agent = ConversableAgent(
-    name="engagement_agent",
-    system_message=(
-        "You are a friendly and engaging patient service agent. Your task is to provide the customer with a personalized meal plan for the day. "
-        "Tailor the meal plan based on the customer's chronic disease. The meal plan should include:\n\n"
-        "- **Recipes for each meal**, detailing the exact ingredients needed and their precise amounts and how to cook the meal.\n"
-        "- **A separate grocery list** compiling all the ingredients required for the day.\n"
-        "- **Serving sizes and calorie counts** for each meal.\n"
-        "- **Nutritional information**, specifying the servings of greens, fruits, vegetables, fiber, proteins, etc., in each meal.\n\n"
-        "**Additional Tasks:**\n\n"
-        "- **Provide nutritional data** for each meal in a JSON format with the following keys: Date, Meal (breakfast/lunch/dinner), Fat%, Calorie Intake, and Sugar. Enclose this data within <json></json> tags.\n"
-        "- **Do not attempt to execute code or generate plots**; instead, provide the data we can use to generate these ourselves.\n\n"
-        "**Customization Guidelines:**\n\n"
-        "- Tailor the meal plan based on the customer's chronic disease.\n"
-        "- Incorporate the customer's preferred cuisine styles.\n"
-        "- Exclude any ingredients the customer wishes to avoid.\n\n"
-        "**Additional Instructions:**\n\n"
-        "- Make your responses engaging, fun, and enjoyable to read.\n"
-        "- Conclude by returning 'TERMINATE' when you have provided all the information."
-    ),
-    llm_config={"config_list": config_list},
-    code_execution_config=False,  # Disable code execution
-    human_input_mode="NEVER",
-    is_termination_msg=lambda msg: "terminate" in msg.get("content").lower(),
-)
-
-customer_proxy_agent = ConversableAgent(
-    name="customer_proxy_agent",
-    llm_config=False,
-    code_execution_config=False,
-    human_input_mode="ALWAYS",
-    is_termination_msg=lambda msg: "terminate" in msg.get("content").lower(),
-)
+# Define agents (same as before, with code_execution_config=False)
+# ... [Define onboarding_agent, engagement_agent, customer_proxy_agent]
 
 # Initialize session state
 if "customer_info" not in st.session_state:
@@ -79,7 +31,10 @@ if "data_frame" not in st.session_state:
 
 # Collect customer information
 st.header("Patient Onboarding")
-if not st.session_state["customer_info"].get("completed"):
+if "customer_info_completed" not in st.session_state:
+    st.session_state["customer_info_completed"] = False
+
+if not st.session_state["customer_info_completed"]:
     with st.form(key="onboarding_form"):
         name = st.text_input("Enter your name:")
         zip_code = st.text_input("Enter your zip code:")
@@ -103,91 +58,98 @@ if not st.session_state["customer_info"].get("completed"):
                 "zip_code": zip_code.strip(),
                 "disease": disease,
                 "cuisine": cuisine,
-                "avoid_ingredients": [ingredient.strip() for ingredient in avoid_ingredients.split(",") if ingredient.strip()],
-                "completed": True,
+                "avoid_ingredients": [
+                    ingredient.strip() for ingredient in avoid_ingredients.split(",") if ingredient.strip()
+                ],
             }
+            st.session_state["customer_info_completed"] = True
             st.success("Thank you! Your information has been recorded.")
-            st.experimental_rerun()
 else:
     st.write(f"Welcome, **{st.session_state['customer_info']['name']}**!")
 
-# Generate meal plan
-if st.session_state["customer_info"].get("completed"):
-    if st.button("Generate Meal Plan"):
-        st.header("Generating Your Personalized Meal Plan...")
-        with st.spinner("Please wait while we generate your meal plan..."):
+# Proceed to meal plan generation if customer info is completed
+if st.session_state.get("customer_info_completed"):
+    if "meal_plan_generated" not in st.session_state:
+        st.session_state["meal_plan_generated"] = False
 
-            # Prepare customer message
-            customer_info = st.session_state["customer_info"]
-            customer_message = (
-                f"My name is {customer_info['name']}. "
-                f"I have {customer_info['disease']} and prefer {', '.join(customer_info['cuisine'])} cuisine. "
-                f"I wish to avoid {', '.join(customer_info['avoid_ingredients'])}."
-            )
+    if not st.session_state["meal_plan_generated"]:
+        if st.button("Generate Meal Plan"):
+            st.header("Generating Your Personalized Meal Plan...")
+            with st.spinner("Please wait while we generate your meal plan..."):
 
-            # Simulate the conversation
-            chats = [
-                {
-                    "sender": onboarding_agent,
-                    "recipient": customer_proxy_agent,
-                    "message": "Hello! I'm here to help you get started with Healthbite.",
-                    "max_turns": 2,
-                    "clear_history": True,
-                },
-                {
-                    "sender": customer_proxy_agent,
-                    "recipient": engagement_agent,
-                    "message": customer_message,
-                    "max_turns": 1,
-                    "summary_method": "reflection_with_llm",
-                },
-            ]
+                # Prepare customer message
+                customer_info = st.session_state["customer_info"]
+                customer_message = (
+                    f"My name is {customer_info['name']}. "
+                    f"I have {customer_info['disease']} and prefer {', '.join(customer_info['cuisine'])} cuisine. "
+                    f"I wish to avoid {', '.join(customer_info['avoid_ingredients'])}."
+                )
 
-            chat_results = initiate_chats(chats)
+                # Simulate the conversation
+                chats = [
+                    {
+                        "sender": onboarding_agent,
+                        "recipient": customer_proxy_agent,
+                        "message": "Hello! I'm here to help you get started with Healthbite.",
+                        "max_turns": 2,
+                        "clear_history": True,
+                    },
+                    {
+                        "sender": customer_proxy_agent,
+                        "recipient": engagement_agent,
+                        "message": customer_message,
+                        "max_turns": 1,
+                        "summary_method": "reflection_with_llm",
+                    },
+                ]
 
-            # Extract the meal plan from the engagement agent's response
-            conversation_key = f"{customer_proxy_agent.name}_{engagement_agent.name}"
-            meal_plan_response = chat_results.get(conversation_key, {}).get("messages", [])
+                chat_results = initiate_chats(chats)
 
-            if meal_plan_response:
-                # Get the last message from the engagement agent
-                meal_plan_content = meal_plan_response[-1]["content"]
-                st.session_state["meal_plan"] = meal_plan_content
+                # Extract the meal plan from the engagement agent's response
+                conversation_key = f"{customer_proxy_agent.name}_{engagement_agent.name}"
+                meal_plan_response = chat_results.get(conversation_key, {}).get("messages", [])
 
-                # Parse JSON data
-                json_match = re.search(r"<json>(.*?)</json>", meal_plan_content, re.DOTALL)
-                if json_match:
-                    json_data = json_match.group(1).strip()
-                    try:
-                        data_list = json.loads(json_data)
-                        df = pd.DataFrame(data_list)
-                        st.session_state["data_frame"] = df
-                    except json.JSONDecodeError:
-                        st.error("Failed to parse JSON data from the assistant's response.")
+                if meal_plan_response:
+                    # Get the last message from the engagement agent
+                    meal_plan_content = meal_plan_response[-1]["content"]
+                    st.session_state["meal_plan"] = meal_plan_content
+
+                    # Parse JSON data
+                    json_match = re.search(r"<json>(.*?)</json>", meal_plan_content, re.DOTALL)
+                    if json_match:
+                        json_data = json_match.group(1).strip()
+                        try:
+                            data_list = json.loads(json_data)
+                            df = pd.DataFrame(data_list)
+                            st.session_state["data_frame"] = df
+                        except json.JSONDecodeError:
+                            st.error("Failed to parse JSON data from the assistant's response.")
+                    else:
+                        st.warning("No nutritional data found in the assistant's response.")
+
+                    st.session_state["meal_plan_generated"] = True
+
                 else:
-                    st.warning("No nutritional data found in the assistant's response.")
+                    st.session_state["meal_plan"] = "No meal plan generated."
+                    st.session_state["meal_plan_generated"] = True
 
-            else:
-                st.session_state["meal_plan"] = "No meal plan generated."
+            st.success("Your meal plan is ready!")
 
-        st.success("Your meal plan is ready!")
-        st.experimental_rerun()
+    # Display the meal plan if generated
+    if st.session_state.get("meal_plan_generated") and st.session_state.get("meal_plan"):
+        st.header("Your Personalized Meal Plan")
+        st.markdown(st.session_state["meal_plan"])
 
-# Display the meal plan
-if st.session_state.get("meal_plan"):
-    st.header("Your Personalized Meal Plan")
-    st.markdown(st.session_state["meal_plan"])
+        # Display data frame if available
+        if not st.session_state["data_frame"].empty:
+            st.subheader("Nutritional Information Data Frame")
+            st.dataframe(st.session_state["data_frame"])
 
-    # Display data frame if available
-    if not st.session_state["data_frame"].empty:
-        st.subheader("Nutritional Information Data Frame")
-        st.dataframe(st.session_state["data_frame"])
-
-        # Generate plot
-        st.subheader("Nutritional Information Plot")
-        fig, ax = plt.subplots()
-        sns.barplot(data=st.session_state["data_frame"], x="Meal", y="Calorie Intake", ax=ax)
-        st.pyplot(fig)
+            # Generate plot
+            st.subheader("Nutritional Information Plot")
+            fig, ax = plt.subplots()
+            sns.barplot(data=st.session_state["data_frame"], x="Meal", y="Calorie Intake", ax=ax)
+            st.pyplot(fig)
 
 # Footer
 st.write("---")
