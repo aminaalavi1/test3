@@ -20,7 +20,7 @@ config_list = [{"model": "gpt-3.5-turbo", "api_key": OPENAI_API_KEY}]
 
 # Define agents
 onboarding_agent = ConversableAgent(
-    name="onboarding_agent",
+    name="Healthbite Assistant",
     system_message=(
         "You are a helpful patient onboarding agent. "
         "Your job is to gather the patient's name, chronic disease, zip code, and meal cuisine preference. "
@@ -34,7 +34,7 @@ onboarding_agent = ConversableAgent(
 )
 
 engagement_agent = ConversableAgent(
-    name="engagement_agent",
+    name="Healthbite Assistant",
     system_message=(
         "You are a friendly and engaging patient service agent. Your task is to provide the customer with a personalized meal plan for the day. "
         "Tailor the meal plan based on the customer's chronic disease. The meal plan should include:\n\n"
@@ -61,8 +61,9 @@ engagement_agent = ConversableAgent(
 
 # Create a sender object for the user
 class Sender:
-    def __init__(self, name):
+    def __init__(self, name, silent=False):
         self.name = name
+        self.silent = silent
 
     # Ensure the object is hashable
     def __hash__(self):
@@ -95,7 +96,7 @@ user_input = st.text_input("Type your message:", key="user_input")
 if st.button("Send"):
     if user_input:
         # Add user message to conversation
-        st.session_state["messages"].append({"sender": "user", "content": user_input})
+        st.session_state["messages"].append({"sender": "You", "content": user_input})
 
         # Determine which agent to interact with
         last_agent = st.session_state.get("last_agent", "onboarding_agent")
@@ -178,17 +179,4 @@ if st.session_state.get("last_agent") == "finished":
             else:
                 st.warning("No nutritional data found in the assistant's response.")
         else:
-            st.error("No assistant messages found from the engagement agent.")
-    else:
-        st.error("No messages found from the engagement agent.")
-
-    # Reset conversation
-    if st.button("Start New Conversation"):
-        st.session_state["messages"] = []
-        onboarding_agent.reset()
-        engagement_agent.reset()
-        st.session_state["last_agent"] = "onboarding_agent"
-
-# Footer
-st.write("---")
-st.write("Developed with ❤️ using OpenAI, Autogen, and Streamlit")
+          
