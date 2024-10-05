@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import re
 import json
+from types import SimpleNamespace  # Import SimpleNamespace for sender
 
 st.title("Healthbite Meal Plan Generator")
 
@@ -59,6 +60,10 @@ engagement_agent = ConversableAgent(
     is_termination_msg=lambda msg: "terminate" in msg.get("content").lower(),
 )
 
+# Create a sender object for the user
+from types import SimpleNamespace
+user_sender = SimpleNamespace(name="user")
+
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
@@ -89,7 +94,7 @@ if st.button("Send"):
         if last_agent == "onboarding_agent":
             # Interact with onboarding_agent
             onboarding_agent.receive(
-                sender="user",
+                sender=user_sender,
                 message={"role": "user", "content": user_input}
             )
 
@@ -110,7 +115,7 @@ if st.button("Send"):
         elif last_agent == "engagement_agent":
             # Interact with engagement_agent
             engagement_agent.receive(
-                sender="user",
+                sender=user_sender,
                 message={"role": "user", "content": user_input}
             )
 
