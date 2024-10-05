@@ -1,6 +1,7 @@
 streamlit
 openai
-pyautogen  # Or the correct package name for 'autogen'
 pandas
 matplotlib
 seaborn
+pyautogen  # Use the correct package name or installation method
+
