@@ -10,6 +10,7 @@ import seaborn as sns
 from io import StringIO
 import base64
 import re
+import json
 
 st.title("Healthbite Meal Plan Generator")
 
@@ -30,7 +31,7 @@ onboarding_agent = ConversableAgent(
         "Do not ask for other information. Return 'TERMINATE' when you have gathered all the information."
     ),
     llm_config={"config_list": config_list},
-    code_execution_config=False,
+    code_execution_config=False,  # Disable code execution
     human_input_mode="NEVER",
 )
 
@@ -44,9 +45,8 @@ engagement_agent = ConversableAgent(
         "- **Serving sizes and calorie counts** for each meal.\n"
         "- **Nutritional information**, specifying the servings of greens, fruits, vegetables, fiber, proteins, etc., in each meal.\n\n"
         "**Additional Tasks:**\n\n"
-        "- **Generate a data frame** that has five columns: Date, Meal (like breakfast/lunch/dinner), Fat%, Calorie Intake, and Sugar.\n"
-        "- **Create a plot** (e.g., a bar chart) visualizing this nutritional information.\n"
-        "- **Include the data frame and the plot** in your response.\n\n"
+        "- **Provide nutritional data** for each meal in a JSON format with the following keys: Date, Meal (breakfast/lunch/dinner), Fat%, Calorie Intake, and Sugar. Enclose this data within <json></json> tags.\n"
+        "- **Do not attempt to execute code or generate plots**; instead, provide the data we can use to generate these ourselves.\n\n"
         "**Customization Guidelines:**\n\n"
         "- Tailor the meal plan based on the customer's chronic disease.\n"
         "- Incorporate the customer's preferred cuisine styles.\n"
@@ -56,10 +56,7 @@ engagement_agent = ConversableAgent(
         "- Conclude by returning 'TERMINATE' when you have provided all the information."
     ),
     llm_config={"config_list": config_list},
-    code_execution_config={
-        "allowed_imports": ["pandas", "matplotlib", "seaborn"],
-        "execution_timeout": 60,  # in seconds
-    },
+    code_execution_config=False,  # Disable code execution
     human_input_mode="NEVER",
     is_termination_msg=lambda msg: "terminate" in msg.get("content").lower(),
 )
@@ -79,8 +76,6 @@ if "meal_plan" not in st.session_state:
     st.session_state["meal_plan"] = ""
 if "data_frame" not in st.session_state:
     st.session_state["data_frame"] = pd.DataFrame()
-if "plot_image" not in st.session_state:
-    st.session_state["plot_image"] = None
 
 # Collect customer information
 st.header("Patient Onboarding")
@@ -159,21 +154,41 @@ if st.session_state["customer_info"].get("completed"):
                 meal_plan_content = meal_plan_response[-1]["content"]
                 st.session_state["meal_plan"] = meal_plan_content
 
-                # Parse data frame and plot from the response
-                # Extract CSV data
-                csv_match = re.search(r"<csv>(.*?)</csv>", meal_plan_content, re.DOTALL)
-                if csv_match:
-                    csv_data = csv_match.group(1).strip()
-                    # Convert CSV data to DataFrame
-                    df = pd.read_csv(StringIO(csv_data))
-                    st.session_state["data_frame"] = df
+                # Parse JSON data
+                json_match = re.search(r"<json>(.*?)</json>", meal_plan_content, re.DOTALL)
+                if json_match:
+                    json_data = json_match.group(1).strip()
+                    try:
+                        data_list = json.loads(json_data)
+                        df = pd.DataFrame(data_list)
+                        st.session_state["data_frame"] = df
+                    except json.JSONDecodeError:
+                        st.error("Failed to parse JSON data from the assistant's response.")
+                else:
+                    st.warning("No nutritional data found in the assistant's response.")
 
-                # Extract Base64 image
-                img_match = re.search(r"<img>(.*?)</img>", meal_plan_content, re.DOTALL)
-                if img_match:
-                    img_data = img_match.group(1).strip()
-                    # Decode the base64 image
-                    image_bytes = base64.b64decode(img_data)
-                    st.session_state["plot_image"] = image_bytes
             else:
-                st.sessi
+                st.session_state["meal_plan"] = "No meal plan generated."
+
+        st.success("Your meal plan is ready!")
+        st.experimental_rerun()
+
+# Display the meal plan
+if st.session_state.get("meal_plan"):
+    st.header("Your Personalized Meal Plan")
+    st.markdown(st.session_state["meal_plan"])
+
+    # Display data frame if available
+    if not st.session_state["data_frame"].empty:
+        st.subheader("Nutritional Information Data Frame")
+        st.dataframe(st.session_state["data_frame"])
+
+        # Generate plot
+        st.subheader("Nutritional Information Plot")
+        fig, ax = plt.subplots()
+        sns.barplot(data=st.session_state["data_frame"], x="Meal", y="Calorie Intake", ax=ax)
+        st.pyplot(fig)
+
+# Footer
+st.write("---")
+st.write("Developed with ❤️ using OpenAI, Autogen, and Streamlit")
