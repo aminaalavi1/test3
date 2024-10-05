@@ -88,7 +88,10 @@ if st.button("Send"):
 
         if last_agent == "onboarding_agent":
             # Interact with onboarding_agent
-            response = onboarding_agent.step({"role": "user", "content": user_input})
+            onboarding_agent.receive({"role": "user", "content": user_input})
+
+            # Get the agent's response
+            response = onboarding_agent.message_history.get_new_messages()[-1]
             st.session_state["messages"].append({"sender": "Healthbite Assistant", "content": response["content"]})
 
             # Check for termination
@@ -100,7 +103,10 @@ if st.button("Send"):
 
         elif last_agent == "engagement_agent":
             # Interact with engagement_agent
-            response = engagement_agent.step({"role": "user", "content": user_input})
+            engagement_agent.receive({"role": "user", "content": user_input})
+
+            # Get the agent's response
+            response = engagement_agent.message_history.get_new_messages()[-1]
             st.session_state["messages"].append({"sender": "Healthbite Assistant", "content": response["content"]})
 
             # Check for termination
@@ -119,38 +125,43 @@ if st.session_state.get("last_agent") == "finished":
     # Extract meal plan from engagement_agent
     messages = engagement_agent.message_history.get_all_messages()
     if messages:
-        meal_plan_content = messages[-1]["content"]
-        st.header("Your Personalized Meal Plan")
-        st.markdown(meal_plan_content)
+        # Find the last assistant message
+        assistant_messages = [msg for msg in messages if msg["role"] == "assistant"]
+        if assistant_messages:
+            meal_plan_content = assistant_messages[-1]["content"]
+            st.header("Your Personalized Meal Plan")
+            st.markdown(meal_plan_content)
 
-        # Parse JSON data
-        json_match = re.search(r"<json>(.*?)</json>", meal_plan_content, re.DOTALL)
-        if json_match:
-            json_data = json_match.group(1).strip()
-            try:
-                data_list = json.loads(json_data)
-                df = pd.DataFrame(data_list)
-                st.subheader("Nutritional Information Data Frame")
-                st.dataframe(df)
+            # Parse JSON data
+            json_match = re.search(r"<json>(.*?)</json>", meal_plan_content, re.DOTALL)
+            if json_match:
+                json_data = json_match.group(1).strip()
+                try:
+                    data_list = json.loads(json_data)
+                    df = pd.DataFrame(data_list)
+                    st.subheader("Nutritional Information Data Frame")
+                    st.dataframe(df)
 
-                # Generate plot
-                st.subheader("Nutritional Information Plot")
-                fig, ax = plt.subplots()
-                sns.barplot(data=df, x="Meal", y="Calorie Intake", ax=ax)
-                st.pyplot(fig)
-            except json.JSONDecodeError:
-                st.error("Failed to parse JSON data from the assistant's response.")
+                    # Generate plot
+                    st.subheader("Nutritional Information Plot")
+                    fig, ax = plt.subplots()
+                    sns.barplot(data=df, x="Meal", y="Calorie Intake", ax=ax)
+                    st.pyplot(fig)
+                except json.JSONDecodeError:
+                    st.error("Failed to parse JSON data from the assistant's response.")
+            else:
+                st.warning("No nutritional data found in the assistant's response.")
         else:
-            st.warning("No nutritional data found in the assistant's response.")
-
-        # Reset conversation
-        if st.button("Start New Conversation"):
-            st.session_state["messages"] = []
-            onboarding_agent.reset()
-            engagement_agent.reset()
-            st.session_state["last_agent"] = "onboarding_agent"
+            st.error("No assistant messages found from the engagement agent.")
     else:
         st.error("No messages found from the engagement agent.")
+
+    # Reset conversation
+    if st.button("Start New Conversation"):
+        st.session_state["messages"] = []
+        onboarding_agent.reset()
+        engagement_agent.reset()
+        st.session_state["last_agent"] = "onboarding_agent"
 
 # Footer
 st.write("---")
