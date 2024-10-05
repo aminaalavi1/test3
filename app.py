@@ -18,8 +18,53 @@ os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 # Configuration for the language model
 config_list = [{"model": "gpt-3.5-turbo", "api_key": OPENAI_API_KEY}]
 
-# Define agents (same as before, with code_execution_config=False)
-# ... [Define onboarding_agent, engagement_agent, customer_proxy_agent]
+# Define agents
+onboarding_agent = ConversableAgent(
+    name="onboarding_agent",
+    system_message=(
+        "You are a helpful patient onboarding agent. "
+        "Your job is to gather the patient's name, chronic disease, zip code, and meal cuisine preference. "
+        "When they provide this information, ask them about any ingredients they wish to avoid. "
+        "Do not ask for other information. Return 'TERMINATE' when you have gathered all the information."
+    ),
+    llm_config={"config_list": config_list},
+    code_execution_config=False,  # Disable code execution
+    human_input_mode="NEVER",
+)
+
+engagement_agent = ConversableAgent(
+    name="engagement_agent",
+    system_message=(
+        "You are a friendly and engaging patient service agent. Your task is to provide the customer with a personalized meal plan for the day. "
+        "Tailor the meal plan based on the customer's chronic disease. The meal plan should include:\n\n"
+        "- **Recipes for each meal**, detailing the exact ingredients needed and their precise amounts and how to cook the meal.\n"
+        "- **A separate grocery list** compiling all the ingredients required for the day.\n"
+        "- **Serving sizes and calorie counts** for each meal.\n"
+        "- **Nutritional information**, specifying the servings of greens, fruits, vegetables, fiber, proteins, etc., in each meal.\n\n"
+        "**Additional Tasks:**\n\n"
+        "- **Provide nutritional data** for each meal in a JSON format with the following keys: Date, Meal (breakfast/lunch/dinner), Fat%, Calorie Intake, and Sugar. Enclose this data within <json></json> tags.\n"
+        "- **Do not attempt to execute code or generate plots**; instead, provide the data we can use to generate these ourselves.\n\n"
+        "**Customization Guidelines:**\n\n"
+        "- Tailor the meal plan based on the customer's chronic disease.\n"
+        "- Incorporate the customer's preferred cuisine styles.\n"
+        "- Exclude any ingredients the customer wishes to avoid.\n\n"
+        "**Additional Instructions:**\n\n"
+        "- Make your responses engaging, fun, and enjoyable to read.\n"
+        "- Conclude by returning 'TERMINATE' when you have provided all the information."
+    ),
+    llm_config={"config_list": config_list},
+    code_execution_config=False,  # Disable code execution
+    human_input_mode="NEVER",
+    is_termination_msg=lambda msg: "terminate" in msg.get("content").lower(),
+)
+
+customer_proxy_agent = ConversableAgent(
+    name="customer_proxy_agent",
+    llm_config=False,
+    code_execution_config=False,
+    human_input_mode="ALWAYS",
+    is_termination_msg=lambda msg: "terminate" in msg.get("content").lower(),
+)
 
 # Initialize session state
 if "customer_info" not in st.session_state:
@@ -82,8 +127,9 @@ if st.session_state.get("customer_info_completed"):
                 customer_message = (
                     f"My name is {customer_info['name']}. "
                     f"I have {customer_info['disease']} and prefer {', '.join(customer_info['cuisine'])} cuisine. "
-                    f"I wish to avoid {', '.join(customer_info['avoid_ingredients'])}."
                 )
+                if customer_info['avoid_ingredients']:
+                    customer_message += f"I wish to avoid {', '.join(customer_info['avoid_ingredients'])}."
 
                 # Simulate the conversation
                 chats = [
