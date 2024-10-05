@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import re
 import json
-from types import SimpleNamespace  # Import SimpleNamespace for sender
 
 st.title("Healthbite Meal Plan Generator")
 
@@ -61,8 +60,18 @@ engagement_agent = ConversableAgent(
 )
 
 # Create a sender object for the user
-from types import SimpleNamespace
-user_sender = SimpleNamespace(name="user")
+class Sender:
+    def __init__(self, name):
+        self.name = name
+
+    # Ensure the object is hashable
+    def __hash__(self):
+        return hash(self.name)
+
+    def __eq__(self, other):
+        return isinstance(other, Sender) and self.name == other.name
+
+user_sender = Sender("user")
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -154,32 +163,4 @@ if st.session_state.get("last_agent") == "finished":
             if json_match:
                 json_data = json_match.group(1).strip()
                 try:
-                    data_list = json.loads(json_data)
-                    df = pd.DataFrame(data_list)
-                    st.subheader("Nutritional Information Data Frame")
-                    st.dataframe(df)
-
-                    # Generate plot
-                    st.subheader("Nutritional Information Plot")
-                    fig, ax = plt.subplots()
-                    sns.barplot(data=df, x="Meal", y="Calorie Intake", ax=ax)
-                    st.pyplot(fig)
-                except json.JSONDecodeError:
-                    st.error("Failed to parse JSON data from the assistant's response.")
-            else:
-                st.warning("No nutritional data found in the assistant's response.")
-        else:
-            st.error("No assistant messages found from the engagement agent.")
-    else:
-        st.error("No messages found from the engagement agent.")
-
-    # Reset conversation
-    if st.button("Start New Conversation"):
-        st.session_state["messages"] = []
-        onboarding_agent.reset()
-        engagement_agent.reset()
-        st.session_state["last_agent"] = "onboarding_agent"
-
-# Footer
-st.write("---")
-st.write("Developed with ❤️ using OpenAI, Autogen, and Streamlit")
+                    data_list = json.loads(json_da
