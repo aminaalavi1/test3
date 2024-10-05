@@ -160,4 +160,21 @@ if st.session_state.get("last_agent") == "finished":
                     sns.barplot(data=df, x="Meal", y="Calorie Intake", ax=ax)
                     st.pyplot(fig)
                 except json.JSONDecodeError:
-                    st.error("Failed to parse JSON data from the assistant's r
+                    st.error("Failed to parse JSON data from the assistant's response.")
+            else:
+                st.warning("No nutritional data found in the assistant's response.")
+        else:
+            st.error("No assistant messages found from the engagement agent.")
+    else:
+        st.error("No messages found from the engagement agent.")
+
+    # Reset conversation
+    if st.button("Start New Conversation"):
+        st.session_state["messages"] = []
+        onboarding_agent.reset()
+        engagement_agent.reset()
+        st.session_state["last_agent"] = "onboarding_agent"
+
+# Footer
+st.write("---")
+st.write("Developed with ❤️ using OpenAI, Autogen, and Streamlit")
